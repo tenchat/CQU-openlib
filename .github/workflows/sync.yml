@@ -5,8 +5,8 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 每天北京时间上午 8:00 执行 (UTC 0:00)
-  workflow_dispatch:    # 允许手动点击按钮触发同步
+    - cron: '0 0 * * *' # 每天北京时间 8:00 执行
+  workflow_dispatch:    # 手动触发按钮
 
 jobs:
   sync_latest_from_upstream:
@@ -14,27 +14,43 @@ jobs:
     name: Sync latest commits from upstream repo
 
     steps:
-    # 第一步：检出你的仓库
+    # 1. 检出你的仓库 (使用完全克隆以包含所有分支信息)
     - name: Checkout target repo
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
 
-    # 第二步：同步上游操作
+    # 2. 配置 Git 用户信息
+    - name: Configure Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    # 3. 添加上游仓库并同步
     - name: Sync upstream changes
-      id: sync
-      uses: aieri/sync-upstream-repo@v1.3.0
-      with:
-        upstream_repo: "https://github.com/INFO-studio/CQU-openlib.git"
-        upstream_branch: "main"
-        target_branch: "main"
-        force: false # 如果你没有在 fork 分支上提交代码，设为 false 即可
+      run: |
+        # 替换下面的 URL 为原作者仓库地址
+        UPSTREAM_REPO="https://github.com/INFO-studio/CQU-openlib.git"
+        UPSTREAM_BRANCH="main"
+        TARGET_BRANCH="main"
 
-    # 第三步：检查同步结果
-    - name: Check for new commits
-      if: steps.sync.outputs.has_new_commits == 'true'
-      run: echo "New commits were found and synced."
-
-    - name: No new commits
-      if: steps.sync.outputs.has_new_commits == 'false'
-      run: echo "No new commits found."
+        # 添加远程仓库
+        git remote add upstream "$UPSTREAM_REPO"
+        
+        # 获取上游更新
+        git fetch upstream "$UPSTREAM_BRANCH"
+        
+        # 切换到你的目标分支
+        git checkout "$TARGET_BRANCH"
+        
+        # 合并上游更改 (使用 --ff-only 确保只在无冲突时合并)
+        # 如果你想强行覆盖自己的修改，可以使用 git reset --hard upstream/"$UPSTREAM_BRANCH"
+        echo "Merging changes from upstream..."
+        git merge upstream/"$UPSTREAM_BRANCH" || {
+            echo "Conflict detected! Manual intervention required."
+            exit 1
+        }
+        
+        # 推送到你自己的仓库
+        git push origin "$TARGET_BRANCH"
